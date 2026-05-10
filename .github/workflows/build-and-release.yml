@@ -85,6 +85,7 @@ jobs:
           perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
           perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
           perl -0pi -e "s/ic_launcher(?:_round)?/ic_code/g" app/src/main/AndroidManifest.xml
+          perl -0pi -e 's/android:padding="([^"\s]+)\s+([^"\s]+)"/android:paddingTop="$1"\n            android:paddingBottom="$1"\n            android:paddingLeft="$2"\n            android:paddingRight="$2"/g' app/src/main/res/layout/*.xml
           mkdir -p app/src/main/res/mipmap
           cat > app/src/main/res/mipmap/ic_code.xml <<'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android"

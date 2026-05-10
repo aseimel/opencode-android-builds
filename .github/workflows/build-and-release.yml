@@ -84,6 +84,7 @@ jobs:
 
           perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
           perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
+          perl -0pi -e "s/minifyEnabled true/minifyEnabled false/" app/build.gradle
           perl -0pi -e "s/implementation 'com\.squareup\.okhttp3:okhttp:4\.12\.0'/implementation 'com.squareup.okhttp3:okhttp:4.12.0'\n    implementation 'com.squareup.okhttp3:okhttp-sse:4.12.0'\n    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'/" app/build.gradle
           perl -0pi -e "s/ic_launcher(?:_round)?/ic_code/g" app/src/main/AndroidManifest.xml
           perl -0pi -e 's/android:padding="([^"\s]+)\s+([^"\s]+)"/android:paddingTop="$1"\n            android:paddingBottom="$1"\n            android:paddingLeft="$2"\n            android:paddingRight="$2"/g' app/src/main/res/layout/*.xml

@@ -1,0 +1,158 @@
+name: Build and release upstream APK
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Rebuild and replace the release for the current upstream commit"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_REPOSITORY: mulkymalikuldhrs/opencode-android
+  UPSTREAM_BRANCH: main
+
+jobs:
+  build-release:
+    name: Build signed APK from upstream
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve upstream commit
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild || false }}
+        run: |
+          set -euo pipefail
+
+          SHA=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/heads/${UPSTREAM_BRANCH}" | cut -f1)
+          SHORT_SHA=${SHA::7}
+          TAG="upstream-${SHORT_SHA}"
+
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "${TAG}" >/dev/null 2>&1 && [ "${FORCE_REBUILD}" != "true" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Release ${TAG} already exists. Nothing to do."
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout upstream source
+        if: steps.upstream.outputs.build == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPOSITORY }}
+          ref: ${{ steps.upstream.outputs.sha }}
+          path: source
+
+      - name: Set up Java
+        if: steps.upstream.outputs.build == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        if: steps.upstream.outputs.build == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        if: steps.upstream.outputs.build == 'true'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.2"
+
+      - name: Patch app version for Android updates
+        if: steps.upstream.outputs.build == 'true'
+        working-directory: source
+        run: |
+          set -euo pipefail
+
+          VERSION_CODE=$(git show -s --format=%ct HEAD)
+          VERSION_NAME="$(git show -s --format=%cd --date=format:%Y.%m.%d HEAD)-${{ steps.upstream.outputs.short_sha }}"
+
+          perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
+          perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
+
+          echo "VERSION_CODE=${VERSION_CODE}" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+
+      - name: Decode signing keystore
+        if: steps.upstream.outputs.build == 'true'
+        working-directory: source
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_KEYSTORE_BASE64}"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 -d > release.jks
+
+      - name: Generate Gradle wrapper
+        if: steps.upstream.outputs.build == 'true'
+        working-directory: source
+        run: gradle wrapper --gradle-version 8.2
+
+      - name: Build unsigned release APK
+        if: steps.upstream.outputs.build == 'true'
+        working-directory: source
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      - name: Sign APK
+        if: steps.upstream.outputs.build == 'true'
+        working-directory: source
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "${ANDROID_KEYSTORE_PASSWORD}"
+          test -n "${ANDROID_KEY_ALIAS}"
+          test -n "${ANDROID_KEY_PASSWORD}"
+
+          BUILD_TOOLS_DIR=$(find "${ANDROID_HOME}/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)
+          ZIPALIGN="${BUILD_TOOLS_DIR}/zipalign"
+          APKSIGNER="${BUILD_TOOLS_DIR}/apksigner"
+          TAG="${{ steps.upstream.outputs.tag }}"
+
+          mkdir -p dist
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*unsigned*.apk" -print -quit)
+          ALIGNED_APK="dist/opencode-android-${TAG}-aligned.apk"
+          SIGNED_APK="dist/opencode-android-${TAG}.apk"
+
+          "${ZIPALIGN}" -p -f 4 "${UNSIGNED_APK}" "${ALIGNED_APK}"
+          "${APKSIGNER}" sign \
+            --ks release.jks \
+            --ks-key-alias "${ANDROID_KEY_ALIAS}" \
+            --ks-pass "env:ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass "env:ANDROID_KEY_PASSWORD" \
+            --out "${SIGNED_APK}" \
+            "${ALIGNED_APK}"
+          "${APKSIGNER}" verify --verbose "${SIGNED_APK}"
+
+      - name: Publish GitHub release
+        if: steps.upstream.outputs.build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.upstream.outputs.tag }}
+          name: OpenCode Android ${{ env.VERSION_NAME }}
+          body: |
+            Automatic build from upstream `${{ env.UPSTREAM_REPOSITORY }}`.
+
+            Upstream commit: `${{ steps.upstream.outputs.sha }}`
+            Android versionCode: `${{ env.VERSION_CODE }}`
+            Android versionName: `${{ env.VERSION_NAME }}`
+          files: source/dist/opencode-android-${{ steps.upstream.outputs.tag }}.apk
+          make_latest: true

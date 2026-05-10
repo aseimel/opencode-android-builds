@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ai.opencode.mobile'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'ai.opencode.mobile'
+        minSdk 24
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('VERSION_CODE') ?: '2000000000')
+        versionName System.getenv('VERSION_NAME') ?: 'webview-local'
+    }
+}

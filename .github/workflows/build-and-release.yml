@@ -1,123 +1,54 @@
-name: Build and release upstream APK
+name: Build and release APK
 
 on:
-  schedule:
-    - cron: "23 4 * * *"
   workflow_dispatch:
-    inputs:
-      force_rebuild:
-        description: "Rebuild and replace the release for the current upstream commit"
-        required: false
-        default: false
-        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - ".github/workflows/build-and-release.yml"
 
 permissions:
   contents: write
 
-env:
-  UPSTREAM_REPOSITORY: mulkymalikuldhrs/opencode-android
-  UPSTREAM_BRANCH: main
-  BUILD_PATCH_VERSION: armin2
-
 jobs:
   build-release:
-    name: Build signed APK from upstream
+    name: Build signed WebView APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve upstream commit
-        id: upstream
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild || false }}
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set release version
+        id: version
         run: |
           set -euo pipefail
-
-          SHA=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/heads/${UPSTREAM_BRANCH}" | cut -f1)
-          SHORT_SHA=${SHA::7}
-          TAG="upstream-${SHORT_SHA}-${BUILD_PATCH_VERSION}"
-
-          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          VERSION_CODE=$((2000000000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="webview-${GITHUB_RUN_NUMBER}"
+          TAG="webview-${GITHUB_RUN_NUMBER}"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-          if gh release view "${TAG}" >/dev/null 2>&1 && [ "${FORCE_REBUILD}" != "true" ]; then
-            echo "build=false" >> "$GITHUB_OUTPUT"
-            echo "Release ${TAG} already exists. Nothing to do."
-          else
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout upstream source
-        if: steps.upstream.outputs.build == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.UPSTREAM_REPOSITORY }}
-          ref: ${{ steps.upstream.outputs.sha }}
-          path: source
-
       - name: Set up Java
-        if: steps.upstream.outputs.build == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
-        if: steps.upstream.outputs.build == 'true'
         uses: android-actions/setup-android@v3
 
       - name: Set up Gradle
-        if: steps.upstream.outputs.build == 'true'
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.2"
 
-      - name: Patch app version for Android updates
-        if: steps.upstream.outputs.build == 'true'
-        working-directory: source
-        run: |
-          set -euo pipefail
-
-          VERSION_CODE=$(($(git show -s --format=%ct HEAD) + GITHUB_RUN_NUMBER))
-          VERSION_NAME="$(git show -s --format=%cd --date=format:%Y.%m.%d HEAD)-${{ steps.upstream.outputs.short_sha }}-${BUILD_PATCH_VERSION}.${GITHUB_RUN_NUMBER}"
-
-          perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
-          perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
-          perl -0pi -e "s/minifyEnabled true/minifyEnabled false/" app/build.gradle
-          perl -0pi -e "s/implementation 'com\.squareup\.okhttp3:okhttp:4\.12\.0'/implementation 'com.squareup.okhttp3:okhttp:4.12.0'\n    implementation 'com.squareup.okhttp3:okhttp-sse:4.12.0'\n    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'/" app/build.gradle
-          perl -0pi -e 's/private val username: String = "opencode"/private val username: String = "armin"/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
-          perl -0pi -e 's/val url = "\$serverUrl\$endpoint"/val url = "\$\{serverUrl.trimEnd('\''\/'\'')\}\$endpoint"/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
-          perl -0pi -e 's/val body = response\.body\?\.string\(\) \?: "\{\}"\n\s*continuation\.resume\(body\)/val body = response.body?.string() ?: "{}"\n                        val trimmedBody = body.trimStart()\n                        if (trimmedBody.startsWith("<")) {\n                            continuation.resumeWithException(IOException("Server returned HTML instead of JSON. Check the URL and Basic Auth credentials."))\n                        } else {\n                            continuation.resume(body)\n                        }/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
-          perl -0pi -e "s/ic_launcher(?:_round)?/ic_code/g" app/src/main/AndroidManifest.xml
-          perl -0pi -e 's/android:padding="([^"\s]+)\s+([^"\s]+)"/android:paddingTop="$1"\n            android:paddingBottom="$1"\n            android:paddingLeft="$2"\n            android:paddingRight="$2"/g' app/src/main/res/layout/*.xml
-          rm -f app/src/main/java/ai/opencode/mobile/model/Message.kt
-          perl -0pi -e 's/import kotlinx\.coroutines\.Dispatchers/import kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.withContext/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
-          perl -0pi -e 's/providerJson\.optJSONArray\("models"\)\?\.length\(\)\.orDefault\(0\)/(providerJson.optJSONArray("models")?.length() ?: 0)/g; s/json\.optJSONArray\("arguments"\)\?\.length\(\)\.orDefault\(0\)/(json.optJSONArray("arguments")?.length() ?: 0)/g' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
-          mkdir -p app/src/main/res/mipmap
-          cat > app/src/main/res/mipmap/ic_code.xml <<'EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="48dp"
-              android:height="48dp"
-              android:viewportWidth="48"
-              android:viewportHeight="48">
-              <path android:fillColor="#6750A4" android:pathData="M8,8h32a4,4 0,0 1,4 4v24a4,4 0,0 1,-4 4H8a4,4 0,0 1,-4 -4V12a4,4 0,0 1,4 -4z" />
-              <path android:fillColor="#FFFFFF" android:pathData="M19,16l-8,8 8,8 2.8,-2.8L16.6,24l5.2,-5.2zM29,16l-2.8,2.8L31.4,24l-5.2,5.2L29,32l8,-8z" />
-          </vector>
-          EOF
-
-          {
-            echo "android.useAndroidX=true"
-            echo "android.suppressUnsupportedCompileSdk=34"
-          } >> gradle.properties
-
-          echo "VERSION_CODE=${VERSION_CODE}" >> "$GITHUB_ENV"
-          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
-
       - name: Decode signing keystore
-        if: steps.upstream.outputs.build == 'true'
-        working-directory: source
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -126,18 +57,15 @@ jobs:
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 -d > release.jks
 
       - name: Generate Gradle wrapper
-        if: steps.upstream.outputs.build == 'true'
-        working-directory: source
         run: gradle wrapper --gradle-version 8.2
 
       - name: Build unsigned release APK
-        if: steps.upstream.outputs.build == 'true'
-        working-directory: source
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
         run: ./gradlew assembleRelease --no-daemon --console=plain
 
       - name: Sign APK
-        if: steps.upstream.outputs.build == 'true'
-        working-directory: source
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -152,7 +80,7 @@ jobs:
           BUILD_TOOLS_DIR=$(find "${ANDROID_HOME}/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)
           ZIPALIGN="${BUILD_TOOLS_DIR}/zipalign"
           APKSIGNER="${BUILD_TOOLS_DIR}/apksigner"
-          TAG="${{ steps.upstream.outputs.tag }}"
+          TAG="${{ steps.version.outputs.tag }}"
 
           mkdir -p dist
           UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*unsigned*.apk" -print -quit)
@@ -170,16 +98,19 @@ jobs:
           "${APKSIGNER}" verify --verbose "${SIGNED_APK}"
 
       - name: Publish GitHub release
-        if: steps.upstream.outputs.build == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.upstream.outputs.tag }}
-          name: OpenCode Android ${{ env.VERSION_NAME }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: OpenCode Android WebView ${{ steps.version.outputs.version_name }}
           body: |
-            Automatic build from upstream `${{ env.UPSTREAM_REPOSITORY }}`.
+            Personal WebView wrapper for OpenCode Web.
 
-            Upstream commit: `${{ steps.upstream.outputs.sha }}`
-            Android versionCode: `${{ env.VERSION_CODE }}`
-            Android versionName: `${{ env.VERSION_NAME }}`
-          files: source/dist/opencode-android-${{ steps.upstream.outputs.tag }}.apk
+            Start your server with:
+
+            ```bash
+            OPENCODE_SERVER_USERNAME=armin OPENCODE_SERVER_PASSWORD='<password>' opencode web --hostname 0.0.0.0 --port 4096
+            ```
+
+            The app handles HTTP Basic Auth with username `armin` and the password entered on the connection screen.
+          files: dist/opencode-android-${{ steps.version.outputs.tag }}.apk
           make_latest: true

@@ -1,23 +1,25 @@
-# OpenCode Android Automatic Builds
+# OpenCode Android Personal WebView Build
 
-This repository is intended to contain only automation. It periodically builds signed APK releases from:
+This repository builds a personal Android WebView wrapper for OpenCode Web.
 
-```text
-https://github.com/mulkymalikuldhrs/opencode-android
-```
+It replaces the previously attempted upstream Android client because that project currently builds only with heavy patches and does not appear to be a functional client.
 
-Obtainium should track this repository's GitHub releases, not the upstream repository.
+Obtainium should track this repository's GitHub releases.
 
 ## What It Does
 
-- Checks upstream `main` every day.
-- Skips the build if the current upstream commit already has a release.
-- Builds the Android APK from upstream source.
-- Sets `versionCode` from the upstream commit timestamp so Android updates work.
+- Builds a small WebView app with package `ai.opencode.mobile`.
 - Signs the APK with your private keystore from GitHub Secrets.
-- Publishes a GitHub Release named `upstream-<commit>` with the signed APK attached.
-- Hardcodes the OpenCode Basic Auth username to `armin` for this personal build.
-- Normalizes trailing slashes in the server URL before calling OpenCode API endpoints.
+- Publishes a GitHub Release with the signed APK attached.
+- Handles HTTP Basic Auth with username `armin` and the password entered in the app.
+
+## Server Command
+
+Use OpenCode Web, not the headless server:
+
+```bash
+OPENCODE_SERVER_USERNAME=armin OPENCODE_SERVER_PASSWORD='<password>' opencode web --hostname 0.0.0.0 --port 4096
+```
 
 ## Required GitHub Secrets
 

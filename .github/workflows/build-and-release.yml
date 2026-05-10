@@ -17,7 +17,7 @@ permissions:
 env:
   UPSTREAM_REPOSITORY: mulkymalikuldhrs/opencode-android
   UPSTREAM_BRANCH: main
-  BUILD_PATCH_VERSION: armin1
+  BUILD_PATCH_VERSION: armin2
 
 jobs:
   build-release:
@@ -88,6 +88,8 @@ jobs:
           perl -0pi -e "s/minifyEnabled true/minifyEnabled false/" app/build.gradle
           perl -0pi -e "s/implementation 'com\.squareup\.okhttp3:okhttp:4\.12\.0'/implementation 'com.squareup.okhttp3:okhttp:4.12.0'\n    implementation 'com.squareup.okhttp3:okhttp-sse:4.12.0'\n    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'/" app/build.gradle
           perl -0pi -e 's/private val username: String = "opencode"/private val username: String = "armin"/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
+          perl -0pi -e 's/val url = "\$serverUrl\$endpoint"/val url = "\$\{serverUrl.trimEnd('\''\/'\'')\}\$endpoint"/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
+          perl -0pi -e 's/val body = response\.body\?\.string\(\) \?: "\{\}"\n\s*continuation\.resume\(body\)/val body = response.body?.string() ?: "{}"\n                        val trimmedBody = body.trimStart()\n                        if (trimmedBody.startsWith("<")) {\n                            continuation.resumeWithException(IOException("Server returned HTML instead of JSON. Check the URL and Basic Auth credentials."))\n                        } else {\n                            continuation.resume(body)\n                        }/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
           perl -0pi -e "s/ic_launcher(?:_round)?/ic_code/g" app/src/main/AndroidManifest.xml
           perl -0pi -e 's/android:padding="([^"\s]+)\s+([^"\s]+)"/android:paddingTop="$1"\n            android:paddingBottom="$1"\n            android:paddingLeft="$2"\n            android:paddingRight="$2"/g' app/src/main/res/layout/*.xml
           rm -f app/src/main/java/ai/opencode/mobile/model/Message.kt

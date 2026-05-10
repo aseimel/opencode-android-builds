@@ -17,6 +17,7 @@ Obtainium should track this repository's GitHub releases, not the upstream repos
 - Signs the APK with your private keystore from GitHub Secrets.
 - Publishes a GitHub Release named `upstream-<commit>` with the signed APK attached.
 - Hardcodes the OpenCode Basic Auth username to `armin` for this personal build.
+- Normalizes trailing slashes in the server URL before calling OpenCode API endpoints.
 
 ## Required GitHub Secrets
 

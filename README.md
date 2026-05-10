@@ -16,6 +16,7 @@ Obtainium should track this repository's GitHub releases, not the upstream repos
 - Sets `versionCode` from the upstream commit timestamp so Android updates work.
 - Signs the APK with your private keystore from GitHub Secrets.
 - Publishes a GitHub Release named `upstream-<commit>` with the signed APK attached.
+- Hardcodes the OpenCode Basic Auth username to `armin` for this personal build.
 
 ## Required GitHub Secrets
 

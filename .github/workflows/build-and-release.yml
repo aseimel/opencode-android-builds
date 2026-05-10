@@ -17,6 +17,7 @@ permissions:
 env:
   UPSTREAM_REPOSITORY: mulkymalikuldhrs/opencode-android
   UPSTREAM_BRANCH: main
+  BUILD_PATCH_VERSION: armin1
 
 jobs:
   build-release:
@@ -35,7 +36,7 @@ jobs:
 
           SHA=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/heads/${UPSTREAM_BRANCH}" | cut -f1)
           SHORT_SHA=${SHA::7}
-          TAG="upstream-${SHORT_SHA}"
+          TAG="upstream-${SHORT_SHA}-${BUILD_PATCH_VERSION}"
 
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
@@ -79,13 +80,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION_CODE=$(git show -s --format=%ct HEAD)
-          VERSION_NAME="$(git show -s --format=%cd --date=format:%Y.%m.%d HEAD)-${{ steps.upstream.outputs.short_sha }}"
+          VERSION_CODE=$(($(git show -s --format=%ct HEAD) + GITHUB_RUN_NUMBER))
+          VERSION_NAME="$(git show -s --format=%cd --date=format:%Y.%m.%d HEAD)-${{ steps.upstream.outputs.short_sha }}-${BUILD_PATCH_VERSION}.${GITHUB_RUN_NUMBER}"
 
           perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
           perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
           perl -0pi -e "s/minifyEnabled true/minifyEnabled false/" app/build.gradle
           perl -0pi -e "s/implementation 'com\.squareup\.okhttp3:okhttp:4\.12\.0'/implementation 'com.squareup.okhttp3:okhttp:4.12.0'\n    implementation 'com.squareup.okhttp3:okhttp-sse:4.12.0'\n    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'/" app/build.gradle
+          perl -0pi -e 's/private val username: String = "opencode"/private val username: String = "armin"/' app/src/main/java/ai/opencode/mobile/api/OpenCodeClient.kt
           perl -0pi -e "s/ic_launcher(?:_round)?/ic_code/g" app/src/main/AndroidManifest.xml
           perl -0pi -e 's/android:padding="([^"\s]+)\s+([^"\s]+)"/android:paddingTop="$1"\n            android:paddingBottom="$1"\n            android:paddingLeft="$2"\n            android:paddingRight="$2"/g' app/src/main/res/layout/*.xml
           rm -f app/src/main/java/ai/opencode/mobile/model/Message.kt

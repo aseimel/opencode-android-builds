@@ -84,7 +84,18 @@ jobs:
 
           perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
           perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
-          perl -0pi -e "s/@mipmap\/ic_launcher(?:_round)?/@drawable\/ic_code/g" app/src/main/AndroidManifest.xml
+          perl -0pi -e "s/ic_launcher(?:_round)?/ic_code/g" app/src/main/AndroidManifest.xml
+          mkdir -p app/src/main/res/mipmap
+          cat > app/src/main/res/mipmap/ic_code.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="48dp"
+              android:height="48dp"
+              android:viewportWidth="48"
+              android:viewportHeight="48">
+              <path android:fillColor="#6750A4" android:pathData="M8,8h32a4,4 0,0 1,4 4v24a4,4 0,0 1,-4 4H8a4,4 0,0 1,-4 -4V12a4,4 0,0 1,4 -4z" />
+              <path android:fillColor="#FFFFFF" android:pathData="M19,16l-8,8 8,8 2.8,-2.8L16.6,24l5.2,-5.2zM29,16l-2.8,2.8L31.4,24l-5.2,5.2L29,32l8,-8z" />
+          </vector>
+          EOF
 
           {
             echo "android.useAndroidX=true"

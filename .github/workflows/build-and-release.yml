@@ -84,6 +84,7 @@ jobs:
 
           perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
           perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
+          perl -0pi -e "s/@mipmap\/ic_launcher(?:_round)?/@drawable\/ic_code/g" app/src/main/AndroidManifest.xml
 
           {
             echo "android.useAndroidX=true"

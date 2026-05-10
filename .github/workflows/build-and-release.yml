@@ -85,6 +85,11 @@ jobs:
           perl -0pi -e "s/versionCode\s+\d+/versionCode ${VERSION_CODE}/" app/build.gradle
           perl -0pi -e "s/versionName\s+\"[^\"]+\"/versionName \"${VERSION_NAME}\"/" app/build.gradle
 
+          {
+            echo "android.useAndroidX=true"
+            echo "android.suppressUnsupportedCompileSdk=34"
+          } >> gradle.properties
+
           echo "VERSION_CODE=${VERSION_CODE}" >> "$GITHUB_ENV"
           echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
 
